@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Point-in-Polygon (Winding Number) Visualization</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+    #info { position: absolute; top: 10px; left: 10px; color: white; font-family: sans-serif; background: rgba(0,0,0,0.5); padding: 8px; border-radius: 4px; }
+  </style>
+  <!-- Three.js r156 global build -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
+</head>
+<body>
+  <div id="info">Points: 0 | Inside: 0 | Outside: 0</div>
+  <script>
+    // Scene setup
+    const scene = new THREE.Scene();
+    const WIDTH = window.innerWidth;
+    const HEIGHT = window.innerHeight;
+    const viewSize = 10;
+    const aspect = WIDTH / HEIGHT;
+    const camera = new THREE.OrthographicCamera(
+      -viewSize * aspect / 2, viewSize * aspect / 2,
+       viewSize / 2, -viewSize / 2,
+      -100, 100
+    );
+    camera.position.set(0, 0, 10);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(WIDTH, HEIGHT);
+    document.body.appendChild(renderer.domElement);
+
+    // Raycaster for clicks
+    const raycaster = new THREE.Raycaster();
+    const clickPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+
+    // Polygon definition (concave example)
+    const polygonVerts = [
+      new THREE.Vector2(-3, -2),
+      new THREE.Vector2(0, 3),
+      new THREE.Vector2(4, 1),
+      new THREE.Vector2(2, -3),
+      new THREE.Vector2(-1, -1)
+    ];
+
+    // Draw polygon fill
+    const shape = new THREE.Shape(polygonVerts);
+    const shapeGeo = new THREE.ShapeGeometry(shape);
+    const shapeMat = new THREE.MeshBasicMaterial({ color: 0x3333aa, opacity: 0.3, transparent: true, side: THREE.DoubleSide });
+    const shapeMesh = new THREE.Mesh(shapeGeo, shapeMat);
+    shapeMesh.rotation.x = -Math.PI / 2;
+    scene.add(shapeMesh);
+
+    // Draw polygon outline
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+    const pts = polygonVerts.map(v => new THREE.Vector3(v.x, v.y, 0));
+    pts.push(new THREE.Vector3(polygonVerts[0].x, polygonVerts[0].y, 0));
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
+    const polyLine = new THREE.Line(lineGeo, lineMat);
+    scene.add(polyLine);
+
+    // Group for test point markers
+    const markers = new THREE.Group();
+    scene.add(markers);
+    let countInside = 0;
+    let countOutside = 0;
+
+    // Compute winding sum for a point
+    function computeWinding(point, verts) {
+      let total = 0;
+      for (let i = 0; i < verts.length; i++) {
+        const v1 = verts[i];
+        const v2 = verts[(i + 1) % verts.length];
+        const w1 = new THREE.Vector2().subVectors(v1, point);
+        const w2 = new THREE.Vector2().subVectors(v2, point);
+        const det = w1.x * w2.y - w1.y * w2.x;
+        const dot = w1.dot(w2);
+        total += Math.atan2(det, dot);
+      }
+      return total;
+    }
+
+    // Add marker: small circle mesh with label
+    function addMarker(x, y, inside) {
+      const color = inside ? 0x00ff00 : 0xff0000;
+      const geom = new THREE.CircleGeometry(0.15, 16);
+      const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+      const circle = new THREE.Mesh(geom, mat);
+      circle.position.set(x, y, 0.01);
+      markers.add(circle);
+      // update counts and info
+      if (inside) countInside++; else countOutside++;
+      const info = document.getElementById('info');
+      const total = countInside + countOutside;
+      info.textContent = `Points: ${total} | Inside: ${countInside} | Outside: ${countOutside}`;
+    }
+
+    // Handle clicks
+    renderer.domElement.addEventListener('pointerdown', (event) => {
+      const ndc = new THREE.Vector2(
+        (event.clientX / window.innerWidth) * 2 - 1,
+        -(event.clientY / window.innerHeight) * 2 + 1
+      );
+      raycaster.setFromCamera(ndc, camera);
+      const clickPoint = new THREE.Vector3();
+      raycaster.ray.intersectPlane(clickPlane, clickPoint);
+      const pt2 = new THREE.Vector2(clickPoint.x, clickPoint.y);
+      const winding = computeWinding(pt2, polygonVerts);
+      const inside = Math.abs(winding) > Math.PI;
+      addMarker(clickPoint.x, clickPoint.y, inside);
+    });
+
+    // Render loop
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      renderer.setSize(w, h);
+      const aspect = w / h;
+      camera.left   = -viewSize * aspect / 2;
+      camera.right  =  viewSize * aspect / 2;
+      camera.top    =  viewSize / 2;
+      camera.bottom = -viewSize / 2;
+      camera.updateProjectionMatrix();
+    });
+  </script>
+</body>
+</html>
